@@ -18,45 +18,30 @@ jobs:
         - /var/run/docker.sock:/var/run/docker.sock
 
     steps:
-      # 第一步：準備環境 (移除 <<EOF 避免 YAML 解析衝突)
       - name: 第一步：準備環境
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          # 1. 更新並安裝基礎工具
           apt-get update
           apt-get install -y ca-certificates curl git lsb-release
-
-          # 2. 下載官方 GPG 金鑰並設定權限
           install -m 0755 -d /etc/apt/keyrings
           curl -fsSL https://docker.com -o /etc/apt/keyrings/docker.asc
           chmod a+r /etc/apt/keyrings/docker.asc
-
-          # 3. 改用單行 echo 寫入來源設定，安全不衝突
-          ARCH=$(dpkg --print-architecture)
-          CODENAME=$(lsb_release -cs)
-          echo "deb [arch=$ARCH signed-by=/etc/apt/keyrings/docker.asc] https://docker.com $CODENAME stable" | tee /etc/apt/sources.list.d/docker.list
-
-          # 4. 更新來源並安裝 Docker 客戶端
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://docker.com $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list
           apt-get update
           apt-get install -y docker-ce-cli
-          
-          # 5. 驗證
           docker --version
           git --version
 
-      # 第二步：複製儲存庫
       - name: 第二步：複製儲存庫
         run: |
           git clone https://github.com
 
-      # 第三步：建立 Docker 映像檔
       - name: 第三步：建立 Docker 映像檔
         run: |
           cd mcserver-alpine
           docker build -t ghcr.io/${{ github.repository_owner }}/mcserver:alpine .
 
-      # 第四步：推送到該倉庫的 package (GHCR)
       - name: 第四步：登入並推送到 GitHub Packages
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
