@@ -26,26 +26,32 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive  # 解決 debconf frontend 報錯提示
         run: |
+# 1. 更新並安裝基礎憑證工具
           apt-get update
-          apt-get install -y curl git gnupg lsb-release ca-certificates
+          apt-get install -y ca-certificates curl git
           
-          # 建立金鑰目錄
-          mkdir -p /etc/apt/keyrings
-          
-          # 修復：改用更安全的官方標準導入方式，直接儲存成明文金鑰
-          curl -fsSL https://docker.com -o /etc/apt/keyrings/docker.asc
-          
-          # 設定來源清單（注意結尾改指向 docker.asc）
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://docker.com $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-          
-          # 再次更新並正式安裝 Docker CLI
+          # 2. 下載官方 GPG 金鑰並設定權限
+          install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          chmod a+r /etc/apt/keyrings/docker.asc
+
+          # 3. 寫入新版 Docker 來源清單 (DEB822 格式)
+          tee /etc/apt/sources.list.d/docker.sources <<EOF
+          Types: deb
+          URIs: https://download.docker.com/linux/ubuntu
+          Suites: \$(. /etc/os-release && echo "\${UBUNTU_CODENAME:-\$VERSION_CODENAME}")
+          Components: stable
+          Architectures: \$(dpkg --print-architecture)
+          Signed-By: /etc/apt/keyrings/docker.asc
+          EOF
+
+          # 4. 更新來源並精簡安裝 Docker 命令行工具
           apt-get update
           apt-get install -y docker-ce-cli
           
-          # 驗證安裝
+          # 5. 驗證環境
           docker --version
           git --version
-          curl --version
       # 第二步：複製儲存庫
       - name: 複製儲存庫
         run: |
