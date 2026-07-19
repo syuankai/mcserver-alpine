@@ -2,9 +2,8 @@ name: build docker images
 
 on:
   push:
-    branches: [ "main" ] # 當 main 分支有 push 時觸發
+    branches: [ "main" ]
 
-# 賦予此工作流寫入（推送）GitHub Packages (GHCR) 的權限
 permissions:
   packages: write
   contents: read
@@ -13,63 +12,52 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     
-    # 這裡嚴格遵循您的要求：指定跑在 ubuntu:latest 容器中
     container:
       image: ubuntu:latest
-      # 關鍵：掛載宿主機的 docker socket，這樣在容器內部才能執行 docker 指令
       volumes:
         - /var/run/docker.sock:/var/run/docker.sock
 
     steps:
-   # 第一步：準備環境 (修復 GPG 下載錯誤與互動式提示)
-      - name: 準備環境
+      # 第一步：準備環境 (移除 <<EOF 避免 YAML 解析衝突)
+      - name: 第一步：準備環境
         env:
-          DEBIAN_FRONTEND: noninteractive  # 解決 debconf frontend 報錯提示
+          DEBIAN_FRONTEND: noninteractive
         run: |
-# 1. 更新並安裝基礎憑證工具
+          # 1. 更新並安裝基礎工具
           apt-get update
-          apt-get install -y ca-certificates curl git
-          
+          apt-get install -y ca-certificates curl git lsb-release
+
           # 2. 下載官方 GPG 金鑰並設定權限
           install -m 0755 -d /etc/apt/keyrings
-          curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          curl -fsSL https://docker.com -o /etc/apt/keyrings/docker.asc
           chmod a+r /etc/apt/keyrings/docker.asc
 
-          # 3. 寫入新版 Docker 來源清單 (DEB822 格式)
-          tee /etc/apt/sources.list.d/docker.sources <<EOF
-          Types: deb
-          URIs: https://download.docker.com/linux/ubuntu
-          Suites: \$(. /etc/os-release && echo "\${UBUNTU_CODENAME:-\$VERSION_CODENAME}")
-          Components: stable
-          Architectures: \$(dpkg --print-architecture)
-          Signed-By: /etc/apt/keyrings/docker.asc
-          EOF
+          # 3. 改用單行 echo 寫入來源設定，安全不衝突
+          ARCH=$(dpkg --print-architecture)
+          CODENAME=$(lsb_release -cs)
+          echo "deb [arch=$ARCH signed-by=/etc/apt/keyrings/docker.asc] https://docker.com $CODENAME stable" | tee /etc/apt/sources.list.d/docker.list
 
-          # 4. 更新來源並精簡安裝 Docker 命令行工具
+          # 4. 更新來源並安裝 Docker 客戶端
           apt-get update
           apt-get install -y docker-ce-cli
           
-          # 5. 驗證環境
+          # 5. 驗證
           docker --version
           git --version
-      # 第二步：複製儲存庫
-      - name: 複製儲存庫
-        run: |
-          git clone https://github.com/syuankai/mcserver-alpine.git
 
-      # 第三步：cd 進去並執行 docker build
-      - name: 構建 Docker 映像檔
+      # 第二步：複製儲存庫
+      - name: 第二步：複製儲存庫
+        run: |
+          git clone https://github.com
+
+      # 第三步：建立 Docker 映像檔
+      - name: 第三步：建立 Docker 映像檔
         run: |
           cd mcserver-alpine
-          # 這裡使用 GitHub 規範的 GHCR 命名格式進行打包
-          # 名稱會是：ghcr.io/您的使用者名稱/mcserver:alpine
           docker build -t ghcr.io/${{ github.repository_owner }}/mcserver:alpine .
 
       # 第四步：推送到該倉庫的 package (GHCR)
-      - name: 推送到 GitHub Packages
+      - name: 第四步：登入並推送到 GitHub Packages
         run: |
-          # 使用內建的秘密金鑰 GITHUB_TOKEN 自動登入 GitHub Container Registry
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          
-          # 將剛剛封裝好的映像檔推送到您 GitHub 帳號下的 Packages
           docker push ghcr.io/${{ github.repository_owner }}/mcserver:alpine
