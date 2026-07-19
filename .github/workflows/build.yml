@@ -21,33 +21,38 @@ jobs:
         - /var/run/docker.sock:/var/run/docker.sock
 
     steps:
-      # 第一步：準備環境 (安裝 docker-ce-cli, git, curl)
-      - name: 第一步：準備環境
+   # 第一步：準備環境 (修復 GPG 下載錯誤與互動式提示)
+      - name: 準備環境
+        env:
+          DEBIAN_FRONTEND: noninteractive  # 解決 debconf frontend 報錯提示
         run: |
           apt-get update
-          apt-get install -y curl git gnupg lsb-release
+          apt-get install -y curl git gnupg lsb-release ca-certificates
           
-          # 安裝 Docker CLI 必要憑證與來源
+          # 建立金鑰目錄
           mkdir -p /etc/apt/keyrings
-          curl -fsSL https://docker.com | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://docker.com $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
           
-          # 正式安裝 docker-ce-cli
+          # 修復：改用更安全的官方標準導入方式，直接儲存成明文金鑰
+          curl -fsSL https://docker.com -o /etc/apt/keyrings/docker.asc
+          
+          # 設定來源清單（注意結尾改指向 docker.asc）
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://docker.com $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+          
+          # 再次更新並正式安裝 Docker CLI
           apt-get update
           apt-get install -y docker-ce-cli
           
-          # 驗證安裝是否成功
+          # 驗證安裝
           docker --version
           git --version
           curl --version
-
       # 第二步：複製儲存庫
-      - name: 第二步：複製儲存庫
+      - name: 複製儲存庫
         run: |
           git clone https://github.com/syuankai/mcserver-alpine.git
 
       # 第三步：cd 進去並執行 docker build
-      - name: 第三步：建立 Docker 映像檔
+      - name: 構建 Docker 映像檔
         run: |
           cd mcserver-alpine
           # 這裡使用 GitHub 規範的 GHCR 命名格式進行打包
@@ -55,7 +60,7 @@ jobs:
           docker build -t ghcr.io/${{ github.repository_owner }}/mcserver:alpine .
 
       # 第四步：推送到該倉庫的 package (GHCR)
-      - name: 第四步：登入並推送到 GitHub Packages
+      - name: 推送到 GitHub Packages
         run: |
           # 使用內建的秘密金鑰 GITHUB_TOKEN 自動登入 GitHub Container Registry
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
